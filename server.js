@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import mongoose from "mongoose";
 import { connectDB } from "./config/db.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 
@@ -20,7 +21,7 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 100
 });
 app.use(limiter);
 
@@ -52,8 +53,8 @@ app.get("/health", (req, res) => {
 // Payment routes
 app.use("/api", paymentRoutes);
 
-// 404 handler
-app.use('*', (req, res) => {
+// ✅ 404 handler
+app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
