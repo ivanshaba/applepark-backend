@@ -1,6 +1,6 @@
 import express from "express";
 import { initiatePayment, handleWebhook } from "../controllers/paymentController.js";
-import { validatePayment } from "../validation/paymentValidation.js";
+// import { validatePayment } from "../validation/paymentValidation.js";
 
 const router = express.Router();
 

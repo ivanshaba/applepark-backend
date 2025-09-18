@@ -2,6 +2,14 @@ import { saveOrderDB, saveOrderLocal, callRelworxAPI, verifyWebhookSignature, is
 import Payment from "../models/Payment.js";
 import { validationResult } from 'express-validator';
 
+// Utility: Generate unique payment reference
+function generateReference() {
+    const prefix = "AP-";
+    const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const timestamp = Date.now().toString().slice(-6);
+    return prefix + rand + "-" + timestamp;
+}
+
 // ----------------------------
 // Initiate Payment
 // ----------------------------
@@ -17,18 +25,11 @@ async function initiatePayment(req, res) {
       });
     }
 
-    const { 
-      reference, 
-      name, 
-      email, 
-      phone, 
-      amount, 
-      currency, 
-      payment_method,   // 'mobile_money' | 'card'
-      provider,         // Airtel, MTN, Visa, Mastercard, etc.
-      subscription_type, 
-      device_count 
-    } = req.body;
+    // Destructure everything except reference
+    const { name, email, phone, amount, currency, payment_method, provider, subscription_type, device_count } = req.body;
+
+    // Use provided reference or generate a new one
+    const reference = req.body.reference || generateReference();
 
     // Decide Relworx endpoint based on payment method
     let endpoint = "";
@@ -85,7 +86,6 @@ async function initiatePayment(req, res) {
     await saveOrderDB(orderData);
     await saveOrderLocal(orderData);
 
-    // Log transaction
     console.log(`Payment initiated: ${reference}, Method: ${payment_method}, Status: ${ok ? 'pending' : 'failed'}`);
 
     // Respond back
@@ -94,7 +94,7 @@ async function initiatePayment(req, res) {
         success: true,
         message: 'Payment initiated successfully',
         data: body,
-        reference: reference
+        reference
       });
     } else {
       res.status(400).json({
@@ -121,12 +121,7 @@ async function handleWebhook(req, res) {
     const rawBody = JSON.stringify(req.body);
     const signature = req.headers["x-relworx-signature"];
 
-    // Verify webhook signature
-    const valid = verifyWebhookSignature(
-      rawBody,
-      signature,
-      process.env.RELWORX_WEBHOOK_SECRET
-    );
+    const valid = verifyWebhookSignature(rawBody, signature, process.env.RELWORX_WEBHOOK_SECRET);
     if (!valid) {
       console.warn('Invalid webhook signature');
       return res.status(401).json({ success: false, message: "Invalid signature" });
@@ -134,20 +129,14 @@ async function handleWebhook(req, res) {
 
     const { reference, status, transaction_id } = req.body;
 
-    // Prevent double-processing
     if (await isWebhookProcessed(reference)) {
       console.log(`Webhook already processed for reference: ${reference}`);
       return res.status(200).json({ success: true, message: "Already processed" });
     }
 
-    // Update DB with new payment status
     const updatedPayment = await Payment.findOneAndUpdate(
       { reference },
-      { 
-        status,
-        transaction_id,
-        updatedAt: new Date()
-      },
+      { status, transaction_id, updatedAt: new Date() },
       { new: true }
     );
 
@@ -157,8 +146,6 @@ async function handleWebhook(req, res) {
     }
 
     console.log(`Payment status updated: ${reference}, Status: ${status}`);
-
-    // You can add follow-ups here (emails, SMS, etc.)
 
     res.status(200).json({ success: true });
   } catch (err) {
