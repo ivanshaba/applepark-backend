@@ -1,35 +1,26 @@
+// backend/controllers/paymentController.js
+
 import { saveOrderDB, saveOrderLocal, callRelworxAPI, verifyWebhookSignature, isWebhookProcessed } from "../services/paymentService.js";
 import Payment from "../models/Payment.js";
-import { validationResult } from 'express-validator';
-
-// Utility: Generate unique payment reference
-function generateReference() {
-    const prefix = "AP-";
-    const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const timestamp = Date.now().toString().slice(-6);
-    return prefix + rand + "-" + timestamp;
-}
 
 // ----------------------------
 // Initiate Payment
 // ----------------------------
 async function initiatePayment(req, res) {
   try {
-    // Validate incoming request body
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
-
-    // Destructure everything except reference
-    const { name, email, phone, amount, currency, payment_method, provider, subscription_type, device_count } = req.body;
-
-    // Use provided reference or generate a new one
-    const reference = req.body.reference || generateReference();
+    // Destructure incoming request body
+    const { 
+      reference, 
+      name, 
+      email, 
+      phone, 
+      amount, 
+      currency, 
+      payment_method,   // 'mobile_money' | 'card'
+      provider,         
+      subscription_type, 
+      device_count 
+    } = req.body;
 
     // Decide Relworx endpoint based on payment method
     let endpoint = "";
@@ -38,24 +29,22 @@ async function initiatePayment(req, res) {
     } else if (payment_method === "card") {
       endpoint = "/card/request-payment";
     } else {
-      return res.status(400).json({
-        success: false,
-        message: "Unsupported payment method. Use 'mobile_money' or 'card'."
-      });
+      // If payment method missing, default to mobile money
+      endpoint = "/mobile-money/request-payment";
     }
 
     // Build request payload
     const payload = {
       account_no: process.env.RELWORX_ACCOUNT_NO,
-      reference,
-      currency,
-      amount,
+      reference: reference || `AP-${Date.now()}`, // auto-generate if missing
+      currency: currency || "UGX",
+      amount: amount || 0,
       description: `ApplePark IPTV - ${subscription_type || "new subscription"}`,
     };
 
-    if (payment_method === "mobile_money") {
-      payload.msisdn = phone; // required for mobile money
-      payload.provider = provider || "mtn"; // default if not provided
+    if (payment_method === "mobile_money" || !payment_method) {
+      payload.msisdn = phone || "+256000000000"; // default dummy number
+      payload.provider = provider || "mtn";
     }
 
     // Call Relworx API
@@ -68,15 +57,15 @@ async function initiatePayment(req, res) {
 
     // Build order data for saving
     const orderData = {
-      reference,
-      name,
-      email,
-      phone,
-      amount,
-      currency,
-      payment_method,
-      provider,
-      subscription_type,
+      reference: payload.reference,
+      name: name || "Anonymous",
+      email: email || "noemail@example.com",
+      phone: phone || "+256000000000",
+      amount: amount || 0,
+      currency: currency || "UGX",
+      payment_method: payment_method || "mobile_money",
+      provider: provider || "mtn",
+      subscription_type: subscription_type || "new subscription",
       device_count: device_count || 1,
       relworx_response: body,
       status: ok ? "pending" : "failed",
@@ -86,7 +75,7 @@ async function initiatePayment(req, res) {
     await saveOrderDB(orderData);
     await saveOrderLocal(orderData);
 
-    console.log(`Payment initiated: ${reference}, Method: ${payment_method}, Status: ${ok ? 'pending' : 'failed'}`);
+    console.log(`Payment initiated: ${orderData.reference}, Method: ${orderData.payment_method}, Status: ${ok ? 'pending' : 'failed'}`);
 
     // Respond back
     if (ok) {
@@ -94,7 +83,7 @@ async function initiatePayment(req, res) {
         success: true,
         message: 'Payment initiated successfully',
         data: body,
-        reference
+        reference: orderData.reference
       });
     } else {
       res.status(400).json({
@@ -121,7 +110,12 @@ async function handleWebhook(req, res) {
     const rawBody = JSON.stringify(req.body);
     const signature = req.headers["x-relworx-signature"];
 
-    const valid = verifyWebhookSignature(rawBody, signature, process.env.RELWORX_WEBHOOK_SECRET);
+    // Verify webhook signature
+    const valid = verifyWebhookSignature(
+      rawBody,
+      signature,
+      process.env.RELWORX_WEBHOOK_SECRET
+    );
     if (!valid) {
       console.warn('Invalid webhook signature');
       return res.status(401).json({ success: false, message: "Invalid signature" });
@@ -129,14 +123,20 @@ async function handleWebhook(req, res) {
 
     const { reference, status, transaction_id } = req.body;
 
+    // Prevent double-processing
     if (await isWebhookProcessed(reference)) {
       console.log(`Webhook already processed for reference: ${reference}`);
       return res.status(200).json({ success: true, message: "Already processed" });
     }
 
+    // Update DB with new payment status
     const updatedPayment = await Payment.findOneAndUpdate(
       { reference },
-      { status, transaction_id, updatedAt: new Date() },
+      { 
+        status,
+        transaction_id,
+        updatedAt: new Date()
+      },
       { new: true }
     );
 
