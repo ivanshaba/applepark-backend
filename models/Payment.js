@@ -1,3 +1,4 @@
+// models/Payment.js
 import mongoose from "mongoose";
 
 const paymentSchema = new mongoose.Schema(
@@ -8,7 +9,7 @@ const paymentSchema = new mongoose.Schema(
     phone: { type: String },
     amount: { type: Number, required: true },
     currency: { type: String, required: true, default: "UGX" },
-    payment_method: { type: String, required: true, enum: ["mobile", "card"] },
+    payment_method: { type: String, required: true, enum: ["mobile_money", "card"] },
     provider: { type: String },
     subscription_type: { type: String, required: true, enum: ["new", "renew"] },
     device_count: { type: Number, default: 1 },

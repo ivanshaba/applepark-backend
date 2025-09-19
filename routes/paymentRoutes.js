@@ -4,10 +4,10 @@ import { initiatePayment, handleWebhook } from "../controllers/paymentController
 
 const router = express.Router();
 
-// POST /api/pay → Initiates a payment without validation
+// POST /api/pay → Initiates a payment
 router.post("/pay", initiatePayment);
 
-// POST /api/webhook/relworx → Handles webhook callbacks
+// POST /api/webhook/relworx → Handles webhook callbacks from Relworx
 router.post("/webhook/relworx", handleWebhook);
 
 export default router;

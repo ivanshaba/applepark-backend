@@ -1,3 +1,4 @@
+// server.js
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -58,7 +59,7 @@ app.get("/health", (req, res) => {
 // Payment routes
 app.use("/api", paymentRoutes);
 
-// 404 handler (fixed for path-to-regexp error)
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
