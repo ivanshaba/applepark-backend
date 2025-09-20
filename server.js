@@ -1,84 +1,54 @@
-// server.js
 import express from "express";
-import dotenv from "dotenv";
 import cors from "cors";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
-import mongoose from "mongoose";
-import { connectDB } from "./config/db.js";
-import paymentRoutes from "./routes/paymentRoutes.js";
+import fetch from "node-fetch";
+import dotenv from "dotenv";
 
 dotenv.config();
 
 const app = express();
-
-// Security middleware
-app.use(helmet());
-app.use(
-  cors({
-    origin: process.env.ALLOWED_ORIGINS
-      ? process.env.ALLOWED_ORIGINS.split(",")
-      : "*",
-    credentials: true,
-  })
-);
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-});
-app.use(limiter);
-
-// Middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true }));
-
-// Connect to MongoDB
-connectDB();
-
-// Root route
-app.get("/", (req, res) => {
-  res.json({
-    message: "ApplePark IPTV Payment API",
-    version: "1.0.0",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Health check
-app.get("/health", (req, res) => {
-  res.json({
-    status: "OK",
-    database:
-      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Payment routes
-app.use("/api", paymentRoutes);
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ message: "Route not found" });
-});
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error("Error:", error);
-  res.status(500).json({
-    success: false,
-    message:
-      process.env.NODE_ENV === "production"
-        ? "Internal server error"
-        : error.message,
-  });
-});
-
 const PORT = process.env.PORT || 5000;
 
+app.use(cors());
+app.use(express.json());
+
+// Health check (for Render/Heroku monitoring)
+app.get("/", (req, res) => {
+  res.json({ status: "ok", message: "ApplePark Backend Running ✅" });
+});
+
+// Payment route
+app.post("/api/pay", async (req, res) => {
+  try {
+    const { amount, phone, provider, email, username } = req.body;
+
+    if (!amount || !phone || !provider) {
+      return res.status(400).json({ status: "error", message: "Missing required fields" });
+    }
+
+    const response = await fetch(process.env.RELWORX_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.RELWORX_API_KEY}`,
+      },
+      body: JSON.stringify({
+        amount,
+        phone,
+        provider,
+        email,
+        username,
+        currency: "UGX", // set default currency
+      }),
+    });
+
+    const data = await response.json();
+    res.json({ status: "success", data });
+  } catch (error) {
+    console.error("Payment Error:", error);
+    res.status(500).json({ status: "error", message: "Payment request failed" });
+  }
+});
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
