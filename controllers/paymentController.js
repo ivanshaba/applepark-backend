@@ -146,4 +146,4 @@ async function isWebhookProcessed(reference) {
   return payment && payment.status !== 'pending';
 }
 
-export { initiatePayment, handleWebhook };
+export { initiatePayment, handleWebhook }; 

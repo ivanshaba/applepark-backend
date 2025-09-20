@@ -24,8 +24,8 @@ const paymentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Index for better query performance
-paymentSchema.index({ reference: 1 });
+// Remove the duplicate index definitions from the schema and only define them here:
+paymentSchema.index({ reference: 1 }, { unique: true });
 paymentSchema.index({ email: 1 });
 paymentSchema.index({ status: 1 });
 paymentSchema.index({ createdAt: 1 });

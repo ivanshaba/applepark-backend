@@ -13,11 +13,26 @@ import path from "path";
  * @param {number} retries - Number of retry attempts
  * @returns {Promise<{ok: boolean, body: object}>}
  */
+// In callRelworxAPI function, add better error logging:
 export async function callRelworxAPI(endpoint, payload, RELWORX_API_KEY, RELWORX_BASE_URL, retries = 3) {
   const url = `${RELWORX_BASE_URL}${endpoint}`;
+  
+  // Check if API key is provided
+  if (!RELWORX_API_KEY || RELWORX_API_KEY === '1e1d7b1abff46a.82wLZuTcQSdNaRvV-U6mEw') {
+    console.error('❌ Invalid or missing Relworx API key');
+    return { 
+      ok: false, 
+      body: { 
+        message: "Relworx API configuration error - check API key",
+        internal_reference: Math.random().toString(36).substring(7)
+      } 
+    };
+  }
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
+      console.log(`🔄 Relworx API attempt ${attempt}:`, JSON.stringify(payload));
+      
       const res = await fetch(url, {
         method: "POST",
         headers: {
@@ -28,14 +43,29 @@ export async function callRelworxAPI(endpoint, payload, RELWORX_API_KEY, RELWORX
         body: JSON.stringify(payload),
       });
 
+      // Log the response status and headers for debugging
+      console.log(`📨 Relworx response status: ${res.status}`);
+      
       const json = await res.json();
+      console.log(`📨 Relworx response:`, JSON.stringify(json));
 
       if (res.ok) {
         console.log(`✅ Relworx API success: ${endpoint} - Reference: ${payload.reference}`);
         return { ok: true, body: json };
       }
 
-      // Handle rate-limit specific response (HTTP 429)
+      // Handle specific error cases
+      if (res.status === 401) {
+        console.error('❌ Relworx API authentication failed - check API key');
+        return { 
+          ok: false, 
+          body: { 
+            message: "Authentication failed - invalid API key",
+            internal_reference: json.internal_reference || Math.random().toString(36).substring(7)
+          } 
+        };
+      }
+      
       if (res.status === 429) {
         console.warn(`⚠️ Relworx API rate limit hit for ${payload.msisdn}. Retry attempt ${attempt}`);
       } else {
@@ -51,8 +81,19 @@ export async function callRelworxAPI(endpoint, payload, RELWORX_API_KEY, RELWORX
   }
 
   console.error(`❌ Relworx API failed after ${retries} attempts: Reference: ${payload.reference}`);
-  return { ok: false, body: { message: "Relworx API failed after retries" } };
+  return { 
+    ok: false, 
+    body: { 
+      message: "Relworx API failed after retries",
+      internal_reference: Math.random().toString(36).substring(7)
+    } 
+  };
 }
+
+
+
+
+
 
 // ----------------- Save Order to Database -----------------
 export async function saveOrderDB(orderData) {
